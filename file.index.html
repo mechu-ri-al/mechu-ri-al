@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 공유 시 표시될 정보 (SEO & SNS) -->
+    <title>메.추.리.알 - 메뉴 추천 리얼 알리미</title>
+    <meta name="description" content="냉장고 속 재료로 만드는 맛있는 레시피 추천 서비스">
+    <meta property="og:title" content="메.추.리.알">
+    <meta property="og:description" content="오늘 뭐 해 먹지? 메추리알이 알려주는 리얼 레시피!">
+    <meta property="og:type" content="website">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap');
+        
+        body {
+            font-family: 'Nanum+Gothic', sans-serif;
+            background-color: #fffdf0;
+        }
+
+        .egg-gradient {
+            background: linear-gradient(135deg, #ffecb3 0%, #ffd54f 100%);
+        }
+
+        .recipe-card {
+            transition: transform 0.2s;
+        }
+
+        .recipe-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .category-pill.active {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .ingredient-tag {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        /* 스크롤바 숨기기 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen pb-20">
+
+    <!-- Header -->
+    <header class="egg-gradient shadow-md p-6 rounded-b-3xl text-center">
+        <h1 class="text-3xl font-extrabold text-amber-900 mb-1">🥚 메.추.리.알</h1>
+        <p class="text-amber-800 text-sm font-medium">메뉴 추천 리얼 알리미</p>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4">
+        
+        <!-- Search & Filter Section -->
+        <section class="bg-white rounded-2xl p-5 shadow-sm mb-6 border border-amber-100">
+            <div class="relative mb-4">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-amber-400"></i>
+                <input type="text" id="searchInput" placeholder="가지고 있는 재료를 입력해보세요 (예: 무, 두부)" 
+                    class="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-amber-50 focus:border-amber-300 outline-none transition-all">
+            </div>
+            
+            <div id="categoryContainer" class="flex flex-wrap gap-2 overflow-x-auto pb-2 no-scrollbar">
+                <button class="category-pill active px-4 py-2 rounded-full bg-amber-50 text-amber-700 text-sm font-bold border border-amber-100 transition-all" data-category="전체">전체</button>
+            </div>
+        </section>
+
+        <!-- Stats -->
+        <div class="px-2 mb-4 text-amber-900 font-bold">
+            검색 결과: <span id="recipeCount">0</span>개의 맛있는 제안
+        </div>
+
+        <!-- Recipe List -->
+        <div id="recipeList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Recipes will be injected here -->
+        </div>
+    </main>
+
+    <!-- Recipe Detail Modal -->
+    <div id="recipeModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="egg-gradient p-6 relative">
+                <button onclick="closeModal()" class="absolute right-4 top-4 text-amber-900 bg-white/50 w-8 h-8 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+                <span id="modalCategory" class="text-xs font-bold uppercase tracking-wider text-amber-700 bg-white/40 px-2 py-1 rounded">카테고리</span>
+                <h2 id="modalTitle" class="text-2xl font-extrabold text-amber-900 mt-2">요리 이름</h2>
+                <div class="flex gap-4 mt-3 text-sm text-amber-800">
+                    <span><i class="fa-regular fa-clock mr-1"></i> <span id="modalTime">15분</span></span>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <div class="mb-6">
+                    <h3 class="font-bold text-amber-900 mb-2 flex items-center">
+                        <i class="fa-solid fa-basket-shopping mr-2 text-amber-500"></i> 준비 재료
+                    </h3>
+                    <p id="modalIngredients" class="text-gray-700 leading-relaxed"></p>
+                </div>
+                <div class="mb-6">
+                    <h3 class="font-bold text-amber-900 mb-2 flex items-center">
+                        <i class="fa-solid fa-kitchen-set mr-2 text-amber-500"></i> 요리 순서
+                    </h3>
+                    <div id="modalSteps" class="text-gray-700 space-y-3 whitespace-pre-wrap"></div>
+                </div>
+                <div class="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                    <h3 class="font-bold text-amber-800 mb-1 flex items-center">
+                        <i class="fa-solid fa-lightbulb mr-2 text-amber-500"></i> 꿀팁!
+                    </h3>
+                    <p id="modalTip" class="text-amber-900 text-sm"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Area -->
+    <script>
+        const rawRecipes = [
+            {
+                name: "무나물",
+                ingredients: "무, 마늘, 파, 들기름, 식용유, 참치액, 소금, 맛술",
+                method: "1. 달군 팬에 식용유와 들기름을 두르고 다진 파와 다진 마늘을 약불에서 볶는다.\n2. 채 썬 무를 넣어 중불에서 볶다가 살짝 익으면 참치액, 소금, 맛술을 넣어 볶는다.\n3. 수분이 나오면 물 50ml를 넣고 뚜껑을 덮어 3분간 익힌다.",
+                category: "나물/무침",
+                time: "15분",
+                tip: "들깨가루가 있으면 함께 넣어도 맛있다."
+            },
+            {
+                name: "브로콜리 두부무침",
+                ingredients: "브로콜리, 두부, 참치액, 참기름, 마늘, 깨, 후추",
+                method: "1. 브로콜리를 식초물에 씻어 준비한다.\n2. 소금을 넣은 끓는 물에 브로콜리를 5분 데친다. 같은 물에 두부도 살짝 데친다.\n3. 찬물에 식힌 뒤 두부는 물기를 짜서 으깬다.\n4. 브로콜리와 으깬 두부에 참치액, 참기름, 다진 마늘, 깨, 후추를 넣어 섞는다.",
+                category: "샐러드 / 차가운 요리",
+                time: "10분",
+                tip: "샐러드처럼 먹기 좋게 싱겁게 간하면 한 끼 식사로도 좋다."
+            },
+            {
+                name: "숙주나물볶음",
+                ingredients: "숙주, 식용유, 굴소스, 차돌박이(선택)",
+                method: "1. 팬에 식용유를 두르고 숙주를 센 불에서 빠르게 볶는다.\n2. 굴소스로 간을 하고 숨이 살짝 죽으면 바로 불을 끈다.\n3. 기호에 따라 차돌박이를 먼저 볶은 후 숙주를 넣어도 좋다.",
+                category: "나물/무침",
+                time: "5분",
+                tip: "숙주는 너무 오래 볶으면 질겨지므로 빠르게 조리하는 것이 핵심입니다."
+            },
+            {
+                name: "묵은지 들기름 볶음",
+                ingredients: "묵은지, 들기름, 설탕, 마늘, 깨",
+                method: "1. 묵은지는 양념을 씻어내고 물기를 짠 뒤 먹기 좋은 크기로 썬다.\n2. 팬에 들기름을 넉넉히 두르고 다진 마늘과 묵은지를 볶는다.\n3. 신맛이 강하면 설탕을 조금 넣고 충분히 볶은 뒤 깨를 뿌려 마무리한다.",
+                category: "반찬",
+                time: "15분",
+                tip: "냉장고에 오래 둔 김치를 처리하기 가장 좋은 레시피입니다."
+            },
+            {
+                name: "멸치볶음",
+                ingredients: "잔멸치, 식용유, 올리고당, 간장, 마늘, 깨",
+                method: "1. 마른 팬에 멸치를 볶아 비린내를 날린다.\n2. 팬에 기름을 두르고 다진 마늘을 볶다가 멸치를 넣는다.\n3. 간장 약간과 올리고당을 넣고 빠르게 볶아낸다.",
+                category: "반찬",
+                time: "10분",
+                tip: "불을 끄고 올리고당을 넣어야 식어도 딱딱해지지 않습니다."
+            },
+            {
+                name: "무조림",
+                ingredients: "무, 멸치, 보리새우, 고춧가루, 까나리액젓, 국간장, 쌀뜨물",
+                method: "1. 무를 두툼하게 썰어 냄비 바닥에 깔고 볶은 멸치, 보리새우를 넣는다.\n2. 고춧가루, 까나리액젓, 국간장을 넣고 쌀뜨물 약 500ml를 부은 뒤 뚜껑을 닫고 중불에서 약 30분 끓인다.\n3. 이후 약불로 줄여 약 20분 더 끓여 국물이 자작하게 졸아들면 완성한다.",
+                category: "반찬",
+                time: "50분",
+                tip: "국물이 너무 많지 않게 자작하게 졸이면 맛이 더 진해진다."
+            },
+            {
+                name: "양파 장아찌",
+                ingredients: "양파, 간장, 물, 설탕, 식초, 미림, 동전육수",
+                method: "1. 양파를 먹기 좋게 썰어 유리병에 담는다.\n2. 냄비에 간장, 물, 설탕, 미림, 동전육수를 넣고 끓인다. (식초는 제외)\n3. 끓으면 불을 끄고 식초를 넣어 섞는다.\n4. 뜨거울 때 양파가 담긴 병에 부은 뒤 한 김 식혀 냉장 보관한다.",
+                category: "소스 / 장 / 장아찌",
+                time: "20분",
+                tip: "청양고추를 함께 넣으면 매콤한 맛이 더해져 맛있다."
+            },
+            {
+                name: "파김치(feat. 새미네 부엌)",
+                ingredients: "쪽파, 파김치 양념(새미네 부엌)",
+                method: "1. 쪽파를 깨끗이 씻어 물기를 뺀다.\n2. 파김치 양념을 넣어 골고루 버무린다.\n3. 용기에 담아 냉장고에서 익힌다.",
+                category: "김치",
+                time: "5분",
+                tip: "흰 부분에 양념이 잘 스며들지 않을 수 있으니 흰부분을 먼저 버무려주세요."
+            },
+            {
+                name: "오이무침",
+                ingredients: "오이, 양파, 고춧가루, 간장, 식초, 설탕, 마늘",
+                method: "1. 오이를 어슷썰기 하고 양파를 채 썬다.\n2. 고춧가루, 간장, 식초, 설탕, 다진 마늘을 섞어 양념장을 만든다.\n3. 먹기 직전에 버무려 완성한다.",
+                category: "나물/무침",
+                time: "10분",
+                tip: "오이에서 물이 나오므로 먹기 바로 전에 무치는 것이 좋습니다."
+            },
+            {
+                name: "콩나물무침",
+                ingredients: "콩나물, 마늘, 파, 소금, 참기름, 깨",
+                method: "1. 콩나물을 씻어 냄비에 물 약간과 소금을 넣고 뚜껑을 덮어 데친다.\n2. 김이 나면 2-3분 더 익힌 후 찬물에 헹궈 물기를 뺀다.\n3. 다진 마늘, 파, 소금, 참기름을 넣고 무친다.",
+                category: "나물/무침",
+                time: "15분",
+                tip: "데칠 때 뚜껑을 열지 않아야 비린내가 나지 않습니다."
+            },
+            {
+                name: "감자볶음",
+                ingredients: "감자, 당근, 양파, 소금, 식용유",
+                method: "1. 감자를 채 썰어 물에 담가 전분기를 뺀다.\n2. 팬에 기름을 두르고 감자를 볶다가 당근과 양파를 넣는다.\n3. 소금으로 간을 하고 감자가 투명해질 때까지 볶는다.",
+                category: "반찬",
+                time: "15분",
+                tip: "감자를 채 썬 후 물에 헹구면 볶을 때 팬에 달라붙지 않습니다."
+            },
+            {
+                name: "계란말이",
+                ingredients: "계란, 파, 당근, 소금, 식용유",
+                method: "1. 계란을 풀고 다진 파, 당근, 소금을 섞는다.\n2. 팬에 기름을 두르고 계란물을 조금씩 부어가며 돌돌 만다.\n3. 모양을 잡아가며 반복해서 말아준다.",
+                category: "반찬",
+                time: "10분",
+                tip: "약불에서 천천히 익혀야 색이 예쁘게 나옵니다."
+            },
+            {
+                name: "어묵볶음",
+                ingredients: "어묵, 양파, 파, 간장, 올리고당, 마늘",
+                method: "1. 어묵과 야채를 먹기 좋은 크기로 썬다.\n2. 팬에 기름을 두르고 마늘을 볶다가 야채와 어묵을 넣는다.\n3. 간장과 올리고당을 넣어 간을 맞추며 볶는다.",
+                category: "반찬",
+                time: "10분",
+                tip: "물을 1-2큰술 넣고 볶으면 어묵이 훨씬 촉촉해집니다."
+            },
+            {
+                name: "진미채무침",
+                ingredients: "진미채, 고추장, 고춧가루, 간장, 마요네즈, 올리고당",
+                method: "1. 진미채를 마요네즈에 버무려 부드럽게 만든다.\n2. 팬에 양념 재료를 넣고 살짝 끓인다.\n3. 불을 끄고 진미채를 넣어 양념이 잘 배도록 무친다.",
+                category: "반찬",
+                time: "15분",
+                tip: "마요네즈에 먼저 버무리는 것이 부드러운 진미채의 비결입니다."
+            },
+            {
+                name: "시금치나물",
+                ingredients: "시금치, 마늘, 국간장, 참기름, 깨",
+                method: "1. 시금치를 끓는 물에 소금을 넣고 30초간 데친다.\n2. 찬물에 헹궈 물기를 꽉 짠다.\n3. 다진 마늘, 국간장, 참기름을 넣고 조물조물 무친다.",
+                category: "나물/무침",
+                time: "10분",
+                tip: "데친 후 물기를 너무 세게 짜지 않아야 식감이 좋습니다."
+            },
+            {
+                name: "두부조림",
+                ingredients: "두부, 파, 양파, 간장, 고춧가루, 설탕, 마늘",
+                method: "1. 두부를 도톰하게 썰어 팬에 노릇하게 굽는다.\n2. 간장, 고춧가루, 설탕, 마늘, 물을 섞어 양념장을 만든다.\n3. 구운 두부 위에 야채와 양념장을 붓고 졸인다.",
+                category: "반찬",
+                time: "20분",
+                tip: "두부를 먼저 구워야 조릴 때 부서지지 않습니다."
+            },
+            {
+                name: "미역줄기볶음",
+                ingredients: "염장 미역줄기, 마늘, 양파, 식용유, 들기름",
+                method: "1. 미역줄기를 물에 담가 소금기를 충분히 뺀다.\n2. 팬에 기름을 두르고 다진 마늘을 볶다가 미역줄기와 양파를 넣는다.\n3. 들기름을 두르고 충분히 볶아 비린맛을 없앤다.",
+                category: "반찬",
+                time: "15분",
+                tip: "소금기를 빼는 시간이 맛을 좌우하므로 중간에 간을 확인하세요."
+            },
+            {
+                name: "참치김치찌개",
+                ingredients: "김치, 참치캔, 두부, 양파, 파, 마늘",
+                method: "1. 냄비에 김치를 볶다가 물을 붓고 끓인다.\n2. 참치 기름을 뺀 참치와 야채를 넣는다.\n3. 두부를 넣고 한소끔 더 끓여 마무리한다.",
+                category: "국/찌개",
+                time: "25분",
+                tip: "김치를 들기름에 충분히 볶은 후 물을 부으면 국물이 진해집니다."
+            },
+            {
+                name: "소고기미역국",
+                ingredients: "미역, 소고기, 국간장, 마늘, 참기름",
+                method: "1. 불린 미역과 소고기를 참기름에 달달 볶는다.\n2. 물을 붓고 중불에서 오래 끓인다.\n3. 다진 마늘과 국간장으로 간을 맞춘다.",
+                category: "국/찌개",
+                time: "40분",
+                tip: "미역국은 오래 끓일수록 깊은 맛이 납니다."
+            },
+            {
+                name: "애호박볶음",
+                ingredients: "애호박, 양파, 마늘, 새우젓, 식용유, 참기름",
+                method: "1. 애호박과 양파를 채 썬다.\n2. 팬에 기름을 두르고 다진 마늘을 볶다가 야채를 넣는다.\n3. 새우젓으로 간을 하고 호박이 익을 때까지 볶은 후 참기름으로 마무리한다.",
+                category: "나물/무침",
+                time: "10분",
+                tip: "새우젓이 감칠맛을 살려줍니다."
+            },
+            {
+                name: "가지나물",
+                ingredients: "가지, 간장, 마늘, 파, 참기름, 고춧가루",
+                method: "1. 가지를 쪄서 먹기 좋은 크기로 찢는다.\n2. 간장, 마늘, 파, 참기름, 고춧가루를 섞어 양념을 만든다.\n3. 가지와 양념을 살살 버무린다.",
+                category: "나물/무침",
+                time: "15분",
+                tip: "가지를 너무 오래 찌면 흐물거릴 수 있으니 5분 정도가 적당합니다."
+            },
+            {
+                name: "제육볶음",
+                ingredients: "돼지고기, 고추장, 고춧가루, 간장, 설탕, 마늘, 양파, 파",
+                method: "1. 돼지고기를 양념장에 미리 재워둔다.\n2. 팬을 달궈 고기를 볶다가 야채를 넣고 함께 볶는다.\n3. 고기가 다 익으면 불을 끄고 깨를 뿌린다.",
+                category: "반찬",
+                time: "30분",
+                tip: "고기를 센 불에서 빠르게 볶아야 육즙이 빠지지 않습니다."
+            },
+            {
+                name: "콩자반",
+                ingredients: "검은콩, 간장, 설탕, 물, 올리고당, 깨",
+                method: "1. 콩을 깨끗이 씻어 물에 충분히 불린다.\n2. 냄비에 콩과 물을 넣고 끓이다가 간장과 설탕을 넣는다.\n3. 국물이 거의 졸아들면 올리고당을 넣고 윤기를 낸다.",
+                category: "반찬",
+                time: "40분",
+                tip: "콩을 충분히 불려야 딱딱하지 않은 콩자반이 됩니다."
+            },
+            {
+                name: "부추무침",
+                ingredients: "부추, 양파, 고춧가루, 간장, 식초, 설탕",
+                method: "1. 부추를 5cm 길이로 썰고 양파는 얇게 채 썬다.\n2. 양념장을 만들어 부추, 양파와 함께 살살 버무린다.\n3. 고기 요리와 함께 곁들여 낸다.",
+                category: "나물/무침",
+                time: "5분",
+                tip: "너무 세게 무치면 풋내가 날 수 있으니 가볍게 섞어주세요."
+            },
+            {
+                name: "잡채",
+                ingredients: "당면, 시금치, 돼지고기, 당근, 버섯, 양파, 간장, 설탕, 참기름",
+                method: "1. 당면은 삶아서 찬물에 헹군다.\n2. 야채와 고기를 각각 따로 볶아 준비한다.\n3. 당면과 모든 재료를 넣고 간장 양념에 버무려 살짝 볶는다.",
+                category: "반찬",
+                time: "50분",
+                tip: "재료를 따로 볶아야 각각의 색과 맛이 살아납니다."
+            }
+        ];
+
+        let currentCategory = "전체";
+        let searchTerm = "";
+
+        const recipeList = document.getElementById('recipeList');
+        const searchInput = document.getElementById('searchInput');
+        const categoryContainer = document.getElementById('categoryContainer');
+        const recipeCount = document.getElementById('recipeCount');
+
+        function init() {
+            renderCategories();
+            renderRecipes();
+            
+            searchInput.addEventListener('input', (e) => {
+                searchTerm = e.target.value.toLowerCase();
+                renderRecipes();
+            });
+        }
+
+        function renderCategories() {
+            const categories = ["전체", ...new Set(rawRecipes.map(r => r.category))];
+            categoryContainer.innerHTML = categories.map(cat => `
+                <button class="category-pill whitespace-nowrap px-4 py-2 rounded-full bg-white text-amber-700 text-sm font-bold border border-amber-100 transition-all ${currentCategory === cat ? 'active' : ''}" 
+                    onclick="setCategory('${cat}')">
+                    ${cat}
+                </button>
+            `).join('');
+        }
+
+        function setCategory(cat) {
+            currentCategory = cat;
+            renderCategories();
+            renderRecipes();
+        }
+
+        function renderRecipes() {
+            const filtered = rawRecipes.filter(r => {
+                const matchesCategory = currentCategory === "전체" || r.category === currentCategory;
+                const matchesSearch = r.name.toLowerCase().includes(searchTerm) || 
+                                    r.ingredients.toLowerCase().includes(searchTerm);
+                return matchesCategory && matchesSearch;
+            });
+
+            recipeCount.innerText = filtered.length;
+
+            recipeList.innerHTML = filtered.map((r, idx) => `
+                <div class="recipe-card bg-white p-5 rounded-2xl shadow-sm border border-amber-50 cursor-pointer" onclick='openModal(${JSON.stringify(r).replace(/'/g, "&apos;")})'>
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">${r.category}</span>
+                        <span class="text-xs text-gray-400"><i class="fa-regular fa-clock"></i> ${r.time}</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">${r.name}</h3>
+                    <div class="flex flex-wrap gap-1 mt-3">
+                        ${r.ingredients.split(',').slice(0, 3).map(ing => `
+                            <span class="text-[11px] ingredient-tag px-2 py-0.5 rounded-md">${ing.trim()}</span>
+                        `).join('')}
+                        ${r.ingredients.split(',').length > 3 ? `<span class="text-[11px] text-gray-400">...</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openModal(recipe) {
+            document.getElementById('modalTitle').innerText = recipe.name;
+            document.getElementById('modalCategory').innerText = recipe.category;
+            document.getElementById('modalTime').innerText = recipe.time;
+            document.getElementById('modalIngredients').innerText = recipe.ingredients;
+            document.getElementById('modalSteps').innerText = recipe.method;
+            document.getElementById('modalTip').innerText = recipe.tip;
+            
+            document.getElementById('recipeModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('recipeModal').classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('recipeModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
