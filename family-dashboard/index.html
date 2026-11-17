@@ -37,6 +37,15 @@
   /* ---------- header ---------- */
   .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .eyebrow{font-size:10.5px;letter-spacing:.16em;font-weight:800;color:#C0B49A}
+  .top-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .sync-badge{
+    font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#B3AA98;background:#fff;
+    border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap;
+    box-shadow:0 1px 0 var(--line);transition:background .2s,color .2s,border-color .2s;
+  }
+  .sync-badge.on{color:#3F8A62;border-color:#CDEBD8;background:#F1FBF5}
+  .sync-badge.busy{color:#B98A18;border-color:#F3E3B4;background:#FFF9E8}
+  .sync-badge.warn{color:#C4614C;border-color:#F6D5CD;background:#FFF2EE}
   .date-pill{
     background:#fff;border-radius:999px;padding:9px 14px;font-size:12.5px;font-weight:700;color:#6E6555;
     box-shadow:0 2px 0 var(--line), 0 6px 14px rgba(180,158,105,.10);white-space:nowrap;
@@ -352,7 +361,10 @@
 
   <div class="top">
     <div class="eyebrow">OUR FAMILY DASHBOARD</div>
-    <div class="date-pill" id="datePill">—</div>
+    <div class="top-right">
+      <div class="date-pill" id="datePill">—</div>
+      <div class="sync-badge" id="syncBadge">가족 동기화 준비 중</div>
+    </div>
   </div>
 
   <h1>우리 가족의 하루 <span class="em">🌞</span></h1>
@@ -396,7 +408,7 @@
   <main id="view"></main>
 
   <p class="foot">
-    체크한 내용은 이 기기에 저장돼요 · 날짜가 바뀌면 체크만 새로 시작!<br>
+    체크한 내용은 가족 모두에게 실시간으로 함께 저장돼요 · 날짜가 바뀌면 체크만 새로 시작!<br>
     ✎ 로 이름·XP를 고치고, 🗑 으로 지울 수 있어요. 가족 공동 미션도 ＋ 로 더할 수 있어요.
   </p>
 </div>
@@ -410,6 +422,12 @@
      ======================================================== */
   var TRIP = { label: "2027년 1월 오사카 가족여행", status: "날짜 조율 중", note: "날짜가 확정되면 D-day로 알려 드릴게요" };
   var STORE_KEY = "family-dashboard-v1";
+  // 가족 동기화 (Google Apps Script 웹앱 → 구글 시트 '🏠 우리 가족 보드')
+  var API_URL = "https://script.google.com/macros/s/AKfycbwgXSToz5GzToRIMJ0cQWuq2ovbDi8pBHN32AvKfTEijzPbHX90H016CtOeCC32mF7IJA/exec";
+  var PULL_MS = 15000;          // 15초마다 서버 상태 확인
+  var QUIET_MS = 5000;          // 방금 내가 고친 내용은 서버 상태로 덮어쓰지 않음
+  var pushing = false, pulling = false, pushTimer = null;
+  var lastLocalEdit = 0, lastPull = 0, offline = false, suppressPush = false;
   var LEVEL_XP = 100;        // 개인 레벨 1업 = 100 XP
   var FAMILY_LEVEL_XP = 300; // 가족 레벨 1업 = 300 XP
   var TASK_XP = 10;          // 개인 할 일 기본 XP
@@ -624,12 +642,8 @@
     return s;
   }
 
-  function loadState() {
-    var fresh = defaultState(), saved = null;
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (raw) saved = JSON.parse(raw);
-    } catch (e) { saved = null; }
+  function normalizeState(saved) {
+    var fresh = defaultState();
     if (!saved || saved.v !== 1 || !saved.members) return fresh;
 
     MEMBERS.forEach(function (m) {
@@ -673,12 +687,127 @@
     return saved;
   }
 
-  function saveState() {
+  function loadState() {
+    var saved = null;
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) saved = JSON.parse(raw);
+    } catch (e) { saved = null; }
+    return normalizeState(saved);
+  }
+
+  function saveLocal() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 저장 불가 환경이면 넘어감 */ }
   }
 
   var state = loadState();
   var active = "all"; // "all" 또는 member id
+
+  /* ---------- 서버 저장/불러오기 ---------- */
+  function syncReady() {
+    return API_URL && API_URL.indexOf("script.google.com") > -1;
+  }
+
+  function syncBadge(text, kind) {
+    var el = document.getElementById("syncBadge");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "sync-badge" + (kind ? " " + kind : "");
+  }
+
+  function saveState() {
+    saveLocal();
+    if (suppressPush || !syncReady()) return;
+    lastLocalEdit = Date.now();
+    syncBadge("저장 중...", "busy");
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushState, 700);
+  }
+
+  function pushState() {
+    if (!syncReady()) return;
+    var body = JSON.stringify(state);
+    pushing = true;
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: body
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      pushing = false;
+      offline = false;
+      if (res && res.ok) {
+        if (res.updatedAt) lastPull = res.updatedAt;
+        syncBadge("가족 동기화 켜짐 ✓", "on");
+      } else {
+        syncBadge("저장 실패 · 다시 시도 중", "warn");
+      }
+    }).catch(function () {
+      // 응답을 읽지 못해도 저장은 됐을 수 있어요 (CORS) — 한 번 더 보낸 뒤 서버 상태로 확인
+      fetch(API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: body
+      }).then(function () {
+        return fetch(API_URL + "?t=" + Date.now(), { cache: "no-store" });
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        pushing = false;
+        if (res && res.ok) {
+          offline = false;
+          syncBadge("가족 동기화 켜짐 ✓", "on");
+        } else {
+          syncBadge("저장 실패 · 다시 시도 중", "warn");
+        }
+      }).catch(function () {
+        pushing = false;
+        offline = true;
+        syncBadge("오프라인 · 기기에만 저장", "warn");
+      });
+    });
+  }
+
+  function pullState(force) {
+    if (!syncReady()) return;
+    if (pulling || pushing) return;
+    if (document.querySelector(".task.editing, .mitem.editing, .add-form")) return;
+    if (!force && Date.now() - lastLocalEdit < QUIET_MS) return;
+    pulling = true;
+    var url = API_URL + (API_URL.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now();
+    fetch(url, { cache: "no-store", redirect: "follow" }).then(function (r) { return r.json(); }).then(function (res) {
+      pulling = false;
+      if (!res || !res.ok) { syncBadge("동기화 확인 필요", "warn"); return; }
+      if (res.updatedAt) lastPull = res.updatedAt;
+      if (offline) { offline = false; }
+      var srv = res.state;
+      if (!srv || !srv.members || !Object.keys(srv.members).length) {
+        // 서버에 아직 저장된 상태가 없어요 — 이 기기 내용을 올려 둘게요
+        syncBadge("가족 동기화 켜짐 ✓", "on");
+        if (!lastLocalEdit) pushState();
+        return;
+      }
+      if (Date.now() - lastLocalEdit < QUIET_MS) return;
+      var next = normalizeState(srv);
+      if (JSON.stringify(next) === JSON.stringify(state)) { syncBadge("가족 동기화 켜짐 ✓", "on"); return; }
+      suppressPush = true;
+      state = next;
+      saveLocal();
+      suppressPush = false;
+      refresh();
+      syncBadge("가족 동기화 켜짐 ✓", "on");
+    }).catch(function () {
+      pulling = false;
+      offline = true;
+      syncBadge("오프라인 · 기기에만 저장", "warn");
+    });
+  }
+
+  function startSync() {
+    if (!syncReady()) { syncBadge("이 기기에만 저장", "warn"); return; }
+    pullState(true);
+    setInterval(function () { if (!document.hidden) pullState(); }, PULL_MS);
+    window.addEventListener("focus", function () { pullState(); });
+    document.addEventListener("online", function () { pullState(); });
+  }
 
   function memberById(id) {
     for (var i = 0; i < MEMBERS.length; i++) if (MEMBERS[i].id === id) return MEMBERS[i];
@@ -1369,11 +1498,13 @@
      ======================================================== */
   document.getElementById("mascotBox").innerHTML = mascotSVG(66);
   render();
+  startSync();
 
-  // 다른 탭(앱)에서 돌아왔을 때 날짜가 바뀌었으면 새로고침
+  // 다른 탭(앱)에서 돌아왔을 때: 날짜가 바뀌었으면 새로고침, 아니면 가족 상태 새로 받기
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) {
       if (state.date !== todayKey()) window.location.reload();
+      else pullState();
     }
   });
 })();
