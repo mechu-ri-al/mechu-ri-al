@@ -423,7 +423,7 @@
   var TRIP = { label: "2027년 1월 오사카 가족여행", status: "날짜 조율 중", note: "날짜가 확정되면 D-day로 알려 드릴게요" };
   var STORE_KEY = "family-dashboard-v1";
   // 가족 동기화 (Google Apps Script 웹앱 → 구글 시트 '🏠 우리 가족 보드')
-  var API_URL = "__SYNC_API_URL__";
+  var API_URL = "https://script.google.com/macros/s/AKfycbwgXSToz5GzToRIMJ0cQWuq2ovbDi8pBHN32AvKfTEijzPbHX90H016CtOeCC32mF7IJA/exec";
   var PULL_MS = 15000;          // 15초마다 서버 상태 확인
   var QUIET_MS = 5000;          // 방금 내가 고친 내용은 서버 상태로 덮어쓰지 않음
   var pushing = false, pulling = false, pushTimer = null;
@@ -742,15 +742,22 @@
         syncBadge("저장 실패 · 다시 시도 중", "warn");
       }
     }).catch(function () {
-      // 응답을 읽지 못해도 저장은 됐을 수 있어요 (CORS) — 한 번 더 보내고 확인
+      // 응답을 읽지 못해도 저장은 됐을 수 있어요 (CORS) — 한 번 더 보낸 뒤 서버 상태로 확인
       fetch(API_URL, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: body
       }).then(function () {
+        return fetch(API_URL + "?t=" + Date.now(), { cache: "no-store" });
+      }).then(function (r) { return r.json(); }).then(function (res) {
         pushing = false;
-        syncBadge("가족 동기화 켜짐 ✓", "on");
+        if (res && res.ok) {
+          offline = false;
+          syncBadge("가족 동기화 켜짐 ✓", "on");
+        } else {
+          syncBadge("저장 실패 · 다시 시도 중", "warn");
+        }
       }).catch(function () {
         pushing = false;
         offline = true;
