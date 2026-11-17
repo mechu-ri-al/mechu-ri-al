@@ -786,8 +786,10 @@
         return;
       }
       if (Date.now() - lastLocalEdit < QUIET_MS) return;
+      var next = normalizeState(srv);
+      if (JSON.stringify(next) === JSON.stringify(state)) { syncBadge("가족 동기화 켜짐 ✓", "on"); return; }
       suppressPush = true;
-      state = normalizeState(srv);
+      state = next;
       saveLocal();
       suppressPush = false;
       refresh();
