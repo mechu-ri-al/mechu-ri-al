@@ -107,6 +107,24 @@
     border-radius:999px;padding:7px 11px;white-space:nowrap;box-shadow:0 1px 0 rgba(231,208,140,.9);
   }
 
+  .trip-plan{
+    margin-top:8px;background:rgba(255,255,255,.74);border-radius:17px;padding:0 13px;
+  }
+  .trip-plan > summary{
+    list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:10px 0;font-size:12px;font-weight:900;color:#6E5A21;
+  }
+  .trip-plan > summary::-webkit-details-marker{display:none}
+  .trip-plan > summary .caret{font-size:9px;color:#B39A55;font-weight:900;transition:transform .2s}
+  .trip-plan[open] > summary .caret{transform:rotate(180deg)}
+  .trip-plan .days{display:grid;gap:7px;padding:0 0 11px}
+  .trip-plan .day{display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.45;color:#7A6A3E;font-weight:700}
+  .trip-plan .day b{
+    flex:0 0 50px;font-size:10px;font-weight:900;color:#8A6212;background:#FFF6D2;
+    border-radius:7px;padding:2px 0;text-align:center;white-space:nowrap;
+  }
+  .trip-plan .day span{flex:1;word-break:keep-all}
+
   /* ---------- tabs ---------- */
   .tabbar{
     position:sticky;top:0;z-index:8;margin:4px -2px 2px;padding:13px 0 12px;
@@ -391,11 +409,16 @@
 
       <div class="dday">
         <div>
-          <div class="l">✈️ <span id="tripLabel">2027년 1월 오사카 가족여행</span></div>
-          <div class="dates" id="tripDates">2027.1.24(일)~1.27(수) 3박 4일 · 에어서울</div>
+          <div class="l">✈️ <span id="tripLabel">2027년 1월 오사카 가족여행 (5명 · 어머님 동반)</span></div>
+          <div class="dates" id="tripDates">2027.1.24(일)~1.27(수) 3박 4일 · 5명 · 에어서울 RS 0301/0354</div>
         </div>
         <div class="status" id="tripStatus">D-day</div>
       </div>
+
+      <details class="trip-plan" id="tripPlan">
+        <summary>일정 요약 · 5명 <span class="caret">▼</span></summary>
+        <div class="days" id="tripDays"></div>
+      </details>
     </div>
   </section>
 
@@ -421,11 +444,18 @@
      데이터
      ======================================================== */
   var TRIP = {
-    label: "2027년 1월 오사카 가족여행",
+    label: "2027년 1월 오사카 가족여행 (5명 · 어머님 동반)",
     start: "2027-01-24",                        // 인천 출발
     end: "2027-01-27",                          // 간사이 출발(귀국)
-    note: "2027.1.24(일)~1.27(수) 3박 4일 · 에어서울",
-    status: "D-day"
+    note: "2027.1.24(일)~1.27(수) 3박 4일 · 5명 · 에어서울 RS 0301/0354",
+    status: "D-day",
+    // 2026-11-22 확정된 5인(어머님 동반) 최종 일정
+    days: [
+      { d: "1/24 일", t: "5명 · 09:05 간사이 도착 → 난바 → 오후 오사카성 → 저녁 도톤보리·리버크루즈" },
+      { d: "1/25 월", t: "분리 · 아빠+아이들 USJ / 어머님+엄마 온천 또는 역사박물관·백화점" },
+      { d: "1/26 화", t: "5명 · 나라(동대사·사슴공원) → 저녁 하루카스 300 또는 난바" },
+      { d: "1/27 수", t: "5명 · 오전 돈키호테·쿠로몬 시장 → 13:05 라피트 → 16:00 간사이 출발" }
+    ]
   };
   var STORE_KEY = "family-dashboard-v1";
   // 가족 동기화 (Google Apps Script 웹앱 → 구글 시트 '🏠 우리 가족 보드')
@@ -877,6 +907,12 @@
     document.getElementById("tripLabel").textContent = TRIP.label;
     document.getElementById("tripDates").textContent = TRIP.note;
     document.getElementById("tripStatus").textContent = tripDday();
+    var box = document.getElementById("tripDays");
+    if (box && TRIP.days && TRIP.days.length) {
+      box.innerHTML = TRIP.days.map(function (d) {
+        return '<div class="day"><b>' + escapeHTML(d.d) + "</b><span>" + escapeHTML(d.t) + "</span></div>";
+      }).join("");
+    }
   }
 
   function pickCheer() {
